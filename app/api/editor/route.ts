@@ -5,7 +5,8 @@ import { AI_SLOP_RULES } from "@/lib/knowledge/ai-slop-rules";
 import type { EditResult } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 90;
+// Pro plan: max 300 s. Eindredactie met slop-check op een lang artikel kan 2 min.
+export const maxDuration = 180;
 
 /**
  * POST /api/editor

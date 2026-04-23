@@ -8,7 +8,8 @@ import { makeId } from "@/lib/utils";
 import type { ScrapedArticle } from "@/lib/jina";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Pro plan: max 300 s. 180 s is ruim voldoende voor Sonnet + Ahrefs + lange artikels.
+export const maxDuration = 180;
 
 /**
  * POST /api/analyze

@@ -6,7 +6,8 @@ import type { Recommendation, RewriteResult } from "@/lib/types";
 import type { ScrapedArticle } from "@/lib/jina";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+// Pro plan: max 300 s. Herschrijven van een langer artikel kan 2 min duren.
+export const maxDuration = 240;
 
 /**
  * POST /api/rewrite

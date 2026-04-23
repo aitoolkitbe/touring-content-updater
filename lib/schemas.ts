@@ -68,8 +68,8 @@ export const ANALYSIS_SCHEMA = {
     },
     recommendations: {
       type: "array",
-      minItems: 12,
-      maxItems: 25,
+      description:
+        "Tussen 12 en 25 concrete aanbevelingen. Minder mag alleen als er werkelijk niet meer relevantie te vinden is.",
       items: {
         type: "object",
         required: ["id", "category", "title", "description", "impact"],
@@ -189,8 +189,8 @@ export const KEYWORD_DETECTION_SCHEMA = {
     },
     secondaryKeywords: {
       type: "array",
-      minItems: 3,
-      maxItems: 6,
+      description:
+        "3-6 gerelateerde termen die in het artikel voorkomen of zouden moeten.",
       items: { type: "string" },
     },
     intent: {

@@ -13,7 +13,33 @@ export function getAnthropic(): Anthropic {
   return new Anthropic({ apiKey });
 }
 
-export function getModel(): string {
+export type ModelRole = "analyze" | "rewrite" | "editor";
+
+/**
+ * Kies een Claude-model per rol.
+ *
+ * Default-strategie: snelheid waar kwaliteit niet lijdt (analyze → Haiku),
+ * kwaliteit waar het telt (rewrite en editor → Sonnet). Je kan elk van deze
+ * overschrijven via env vars:
+ *
+ *   ANTHROPIC_MODEL_ANALYZE   — default claude-haiku-4-5-20251001
+ *   ANTHROPIC_MODEL_REWRITE   — default claude-sonnet-4-6
+ *   ANTHROPIC_MODEL_EDITOR    — default claude-sonnet-4-6
+ *
+ * ANTHROPIC_MODEL blijft bestaan als globale fallback voor calls zonder rol.
+ */
+export function getModel(role?: ModelRole): string {
+  if (role) {
+    const specific = process.env[`ANTHROPIC_MODEL_${role.toUpperCase()}`];
+    if (specific) return specific;
+
+    const roleDefaults: Record<ModelRole, string> = {
+      analyze: "claude-haiku-4-5-20251001",
+      rewrite: "claude-sonnet-4-6",
+      editor: "claude-sonnet-4-6",
+    };
+    return roleDefaults[role];
+  }
   return process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
 }
 
@@ -34,10 +60,11 @@ export async function callClaudeTool<T>(params: {
   toolDescription: string;
   inputSchema: Record<string, unknown>;
   maxTokens?: number;
+  model?: string;
 }): Promise<T> {
   const client = getAnthropic();
   const response = await client.messages.create({
-    model: getModel(),
+    model: params.model ?? getModel(),
     max_tokens: params.maxTokens ?? 16000,
     system: params.system,
     tools: [

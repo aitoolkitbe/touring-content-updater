@@ -38,13 +38,26 @@ npm run dev
 | Variabele | Verplicht | Waarvoor |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | ja | Voor alle Claude-calls (analyse, rewrite, editor) |
-| `ANTHROPIC_MODEL` | nee | Default `claude-sonnet-4-6`. Opus = duurder maar grondiger |
+| `ANTHROPIC_MODEL_ANALYZE` | nee | Default `claude-haiku-4-5-20251001`. Snel voor structuurwerk |
+| `ANTHROPIC_MODEL_REWRITE` | nee | Default `claude-sonnet-4-6`. Haiku geeft merkbaar zwakkere copy — niet aanraden |
+| `ANTHROPIC_MODEL_EDITOR` | nee | Default `claude-sonnet-4-6`. AI-slop detectie vraagt Sonnet-oordeelsvermogen |
+| `ANTHROPIC_MODEL` | nee | Globale fallback voor calls zonder rol |
 | `AHREFS_API_TOKEN` | nee | Zonder deze draait de analyse op Claude alleen; geen echte keyword-volumes |
 | `AHREFS_COUNTRY` | nee | Default `be` |
 | `APP_PASSWORD` | ja | Gedeeld wachtwoord voor `/login` |
 | `AUTH_SECRET` | ja | HMAC-secret voor de cookie; genereer met `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `JINA_API_KEY` | nee | Optioneel voor hogere rate-limits op de scraper |
 | `NEXT_PUBLIC_APP_URL` | nee | Default `http://localhost:3000` |
+
+### Model-strategie
+
+De drie pipelines hebben elk een eigen karakter:
+
+- **analyze** doet mechanisch structuurwerk — lijst van 12-25 aanbevelingen, semi-deterministisch via tool_use. Haiku 4.5 doet dit 4-5× sneller dan Sonnet zonder kwaliteitsverlies, dus default is Haiku.
+- **rewrite** produceert creatieve copy in Touring's tone of voice. Haiku valt hier duidelijk terug. Default is Sonnet 4.6.
+- **editor** beoordeelt ritme, clichés en AI-slop. Dit vraagt smaak. Default is Sonnet 4.6.
+
+Als je kwaliteit wil opschroeven op een route waar dat telt, kan je `ANTHROPIC_MODEL_REWRITE` of `ANTHROPIC_MODEL_EDITOR` op `claude-opus-4-6` zetten.
 
 ## Deployment op Vercel
 

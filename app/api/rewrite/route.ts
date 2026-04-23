@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callClaudeTool } from "@/lib/anthropic";
+import { callClaudeTool, getModel } from "@/lib/anthropic";
 import { TOURING_TOV, TOURING_INTERNAL_LINKS } from "@/lib/knowledge/touring-tov";
 import { SEO_EXPERTISE } from "@/lib/knowledge/seo-expertise";
 import { REWRITE_SCHEMA } from "@/lib/schemas";
@@ -7,8 +7,9 @@ import type { Recommendation, RewriteResult } from "@/lib/types";
 import type { ScrapedArticle } from "@/lib/jina";
 
 export const runtime = "nodejs";
-// Pro plan: max 300 s. Herschrijven van een langer artikel kan 2 min duren.
-export const maxDuration = 240;
+// Pro plan: max 300 s. Herschrijven + lange output op Sonnet kan aan 280 s zitten.
+// Voor snellere runs: zet ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in Vercel env vars.
+export const maxDuration = 290;
 
 /**
  * POST /api/rewrite
@@ -142,5 +143,7 @@ je veranderd hebt en waar.`;
       "Lever het volledig herschreven artikel (Markdown) en een changelog per toegepaste aanbeveling.",
     inputSchema: REWRITE_SCHEMA as unknown as Record<string, unknown>,
     maxTokens: 16000,
+    // Rewrite blijft op Sonnet — Haiku valt op creatieve copy merkbaar terug.
+    model: getModel("rewrite"),
   });
 }

@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callClaudeTool } from "@/lib/anthropic";
+import { callClaudeTool, getModel } from "@/lib/anthropic";
 import { TOURING_TOV } from "@/lib/knowledge/touring-tov";
 import { AI_SLOP_RULES } from "@/lib/knowledge/ai-slop-rules";
 import { EDIT_SCHEMA } from "@/lib/schemas";
 import type { EditResult } from "@/lib/types";
 
 export const runtime = "nodejs";
-// Pro plan: max 300 s. Eindredactie met slop-check op een lang artikel kan 2 min.
-export const maxDuration = 180;
+// Pro plan: max 300 s. Eindredactie + volledig herschreven artikel outputten kan 2-4 min op Sonnet.
+// Voor snellere runs: zet ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in Vercel env vars.
+export const maxDuration = 290;
 
 /**
  * POST /api/editor
@@ -75,5 +76,7 @@ Roep \`submit_edit\` aan.`;
       "Lever de finale geredigeerde Markdown, een lijst van gevonden AI-slop-patronen en een korte redactienotitie.",
     inputSchema: EDIT_SCHEMA as unknown as Record<string, unknown>,
     maxTokens: 16000,
+    // Editor blijft op Sonnet — AI-slop detectie vraagt fijn oordeelsvermogen.
+    model: getModel("editor"),
   });
 }

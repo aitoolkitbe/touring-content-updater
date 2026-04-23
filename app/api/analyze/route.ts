@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callClaudeTool } from "@/lib/anthropic";
+import { callClaudeTool, getModel } from "@/lib/anthropic";
 import { getAhrefsKeywordData } from "@/lib/ahrefs";
 import { TOURING_TOV, TOURING_INTERNAL_LINKS } from "@/lib/knowledge/touring-tov";
 import { SEO_EXPERTISE } from "@/lib/knowledge/seo-expertise";
@@ -12,8 +12,12 @@ import { makeId } from "@/lib/utils";
 import type { ScrapedArticle } from "@/lib/jina";
 
 export const runtime = "nodejs";
-// Pro plan: max 300 s. 180 s is ruim voldoende voor Sonnet + Ahrefs + lange artikels.
-export const maxDuration = 180;
+// Pro plan: max 300 s. 270 s geeft headroom voor Sonnet op zeer lange artikels.
+// Voor nóg snellere runs: zet ANTHROPIC_MODEL=claude-haiku-4-5-20251001 in Vercel env vars.
+export const maxDuration = 270;
+
+/** Limiteer de artikel-input om Sonnet niet te laten verdrinken in 30k+ tokens. */
+const MAX_ARTICLE_CHARS = 20000;
 
 /**
  * POST /api/analyze
@@ -80,6 +84,7 @@ ${article.markdown.slice(0, 2000)}`;
       "Lever het gedetecteerde primaire keyword, secundaire keywords en zoekintentie.",
     inputSchema: KEYWORD_DETECTION_SCHEMA as unknown as Record<string, unknown>,
     maxTokens: 800,
+    model: getModel("analyze"),
   });
 }
 
@@ -141,8 +146,10 @@ ${article.images
   .map((i) => `- ${i.src.slice(0, 80)} — alt: "${i.alt ?? ""}"`)
   .join("\n") || "(geen)"}
 
-## Volledig artikel (Markdown)
-${article.markdown}
+## Volledig artikel (Markdown${
+    article.markdown.length > MAX_ARTICLE_CHARS ? ", afgekapt tot ~20.000 tekens" : ""
+  })
+${article.markdown.slice(0, MAX_ARTICLE_CHARS)}
 
 ---
 
@@ -169,6 +176,9 @@ Geef een analyse voor een content-update van dit artikel. Roep de tool \`submit_
     toolDescription:
       "Lever de volledige SEO-/GEO-analyse van het artikel met 12-25 concrete, aanvinkbare aanbevelingen.",
     inputSchema: ANALYSIS_SCHEMA as unknown as Record<string, unknown>,
-    maxTokens: 16000,
+    // 8000 is ruim genoeg voor 12-25 aanbevelingen (~300 tokens elk + summary).
+    // Hogere waarden doen het model onnodig traag werken.
+    maxTokens: 8000,
+    model: getModel("analyze"),
   });
 }

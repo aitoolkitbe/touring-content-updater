@@ -33,31 +33,112 @@ const MAX_ARTICLE_CHARS = 20000;
 export async function POST(req: NextRequest) {
   try {
     const body = (await req.json()) as { article: ScrapedArticle };
-    const article = body.article;
+    const article = normalizeArticle(body.article);
     if (!article?.markdown) {
       return NextResponse.json({ error: "Geen artikel meegegeven." }, { status: 400 });
     }
 
     // Stap 1: keyword + intent detectie
-    const detection = await detectKeyword(article);
+    const detection = normalizeDetection(await detectKeyword(article));
 
     // Stap 2: Ahrefs-data
     const ahrefs = await getAhrefsKeywordData(detection.primaryKeyword);
 
     // Stap 3: volledige analyse
-    const analysis = await runFullAnalysis(article, detection, ahrefs);
+    const rawAnalysis = await runFullAnalysis(article, detection, ahrefs);
+    const analysis = normalizeAnalysis(rawAnalysis, article, detection);
 
-    // Ids toekennen aan aanbevelingen
-    analysis.recommendations = analysis.recommendations.map((r) => ({
-      ...r,
-      id: r.id || makeId("rec"),
-    }));
+    if (analysis.recommendations.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Het model gaf geen aanbevelingen terug. Probeer opnieuw, of zet ANTHROPIC_MODEL_ANALYZE=claude-sonnet-4-6 in Vercel voor betrouwbaardere structured output.",
+        },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({ analysis });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
+}
+
+/** Zorgt dat elk array-veld gegarandeerd een array is (Jina kan ze missen). */
+function normalizeArticle(a: ScrapedArticle | undefined): ScrapedArticle | null {
+  if (!a || typeof a !== "object" || !a.markdown) return null;
+  return {
+    url: a.url ?? "unknown",
+    title: a.title ?? null,
+    markdown: a.markdown,
+    wordCount: typeof a.wordCount === "number" ? a.wordCount : 0,
+    images: Array.isArray(a.images) ? a.images : [],
+    headings: Array.isArray(a.headings) ? a.headings : [],
+    links: Array.isArray(a.links) ? a.links : [],
+    hasDateStamp: Boolean(a.hasDateStamp),
+  };
+}
+
+function normalizeDetection(d: Partial<Detection> | undefined): Detection {
+  return {
+    primaryKeyword:
+      typeof d?.primaryKeyword === "string" && d.primaryKeyword.trim()
+        ? d.primaryKeyword.trim()
+        : "touring content",
+    secondaryKeywords: Array.isArray(d?.secondaryKeywords)
+      ? d!.secondaryKeywords.filter(
+          (s): s is string => typeof s === "string" && s.length > 0
+        )
+      : [],
+    intent:
+      d?.intent === "commercial" ||
+      d?.intent === "transactional" ||
+      d?.intent === "navigational"
+        ? d.intent
+        : "informational",
+  };
+}
+
+function normalizeAnalysis(
+  a: Partial<AnalysisResult> | undefined,
+  article: ScrapedArticle,
+  detection: Detection
+): AnalysisResult {
+  const recs = Array.isArray(a?.recommendations) ? a!.recommendations : [];
+  const h1 = article.headings.filter((h) => h.level === 1).length;
+  const h2 = article.headings.filter((h) => h.level === 2).length;
+  const h3 = article.headings.filter((h) => h.level === 3).length;
+
+  return {
+    summary: typeof a?.summary === "string" ? a.summary : "",
+    seo: {
+      primaryKeyword: a?.seo?.primaryKeyword ?? detection.primaryKeyword,
+      secondaryKeywords: Array.isArray(a?.seo?.secondaryKeywords)
+        ? a!.seo!.secondaryKeywords
+        : detection.secondaryKeywords,
+      intent: a?.seo?.intent ?? detection.intent,
+    },
+    articleMeta: {
+      detectedTitle: a?.articleMeta?.detectedTitle ?? article.title ?? null,
+      wordCount: a?.articleMeta?.wordCount ?? article.wordCount,
+      headingCount: a?.articleMeta?.headingCount ?? { h1, h2, h3 },
+      hasDateStamp: a?.articleMeta?.hasDateStamp ?? article.hasDateStamp,
+      imageCount: a?.articleMeta?.imageCount ?? article.images.length,
+    },
+    recommendations: recs
+      .filter((r): r is NonNullable<typeof r> => r != null && typeof r === "object")
+      .map((r) => ({
+        id: typeof r.id === "string" && r.id ? r.id : makeId("rec"),
+        category: (r.category ?? "technical_hygiene") as AnalysisResult["recommendations"][number]["category"],
+        title: typeof r.title === "string" ? r.title : "(geen titel)",
+        description: typeof r.description === "string" ? r.description : "",
+        suggestion: typeof r.suggestion === "string" ? r.suggestion : undefined,
+        impact:
+          r.impact === "high" || r.impact === "low" ? r.impact : "medium",
+        location: typeof r.location === "string" ? r.location : undefined,
+      })),
+  };
 }
 
 interface Detection {

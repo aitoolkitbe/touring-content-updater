@@ -85,10 +85,16 @@ export function Wizard() {
       const { analysis: an } = (await anRes.json()) as {
         analysis: AnalysisResult;
       };
+      const recs = Array.isArray(an?.recommendations) ? an.recommendations : [];
+      if (!an || recs.length === 0) {
+        throw new Error(
+          "De analyse kwam terug zonder aanbevelingen. Probeer opnieuw."
+        );
+      }
       setAnalysis(an);
       // Standaard: alle 'high' impact aanvinken
       const defaultSelected = new Set(
-        an.recommendations.filter((r) => r.impact === "high").map((r) => r.id)
+        recs.filter((r) => r.impact === "high").map((r) => r.id)
       );
       setSelected(defaultSelected);
       setStep("recommendations");

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callClaudeJson } from "@/lib/anthropic";
+import { callClaudeTool } from "@/lib/anthropic";
 import { getAhrefsKeywordData } from "@/lib/ahrefs";
 import { TOURING_TOV, TOURING_INTERNAL_LINKS } from "@/lib/knowledge/touring-tov";
 import { SEO_EXPERTISE } from "@/lib/knowledge/seo-expertise";
-import type { AnalysisResult, Recommendation } from "@/lib/types";
+import {
+  ANALYSIS_SCHEMA,
+  KEYWORD_DETECTION_SCHEMA,
+} from "@/lib/schemas";
+import type { AnalysisResult } from "@/lib/types";
 import { makeId } from "@/lib/utils";
 import type { ScrapedArticle } from "@/lib/jina";
 
@@ -59,25 +63,23 @@ interface Detection {
 }
 
 async function detectKeyword(article: ScrapedArticle): Promise<Detection> {
-  const system = `Je bent een SEO-strateeg. Je taak: het primaire keyword en de zoekintentie van een bestaand artikel afleiden.
-Lever pure JSON, geen uitleg.`;
+  const system =
+    "Je bent een SEO-strateeg. Je leidt het primaire keyword en de zoekintentie van een bestaand Touring-blogartikel af, en geeft 3-6 secundaire keywords.";
 
-  const user = `Analyseer dit Touring-blogartikel en lever JSON in dit exacte schema:
-{
-  "primaryKeyword": "string — 1 tot 4 woorden, het hoofd-zoekwoord dat de lezer intypt",
-  "secondaryKeywords": ["3-6 gerelateerde termen die in het artikel voorkomen of zouden moeten"],
-  "intent": "informational | commercial | transactional | navigational"
-}
-
-TITEL (indien gedetecteerd): ${article.title ?? "(geen)"}
+  const user = `TITEL: ${article.title ?? "(geen)"}
 KOPPEN: ${article.headings.map((h) => `H${h.level}: ${h.text}`).join(" | ")}
+
 ARTIKEL (eerste 2000 tekens):
 ${article.markdown.slice(0, 2000)}`;
 
-  return callClaudeJson<Detection>({
+  return callClaudeTool<Detection>({
     system,
     user,
-    maxTokens: 600,
+    toolName: "detect_keyword",
+    toolDescription:
+      "Lever het gedetecteerde primaire keyword, secundaire keywords en zoekintentie.",
+    inputSchema: KEYWORD_DETECTION_SCHEMA as unknown as Record<string, unknown>,
+    maxTokens: 800,
   });
 }
 
@@ -91,8 +93,6 @@ Je adviseert een copywriter die een bestaand blogartikel gaat updaten. Je doel i
 een grondige, eerlijke analyse met concrete, uitvoerbare aanbevelingen. Vaagheid
 is verboden. Elke aanbeveling moet de copywriter exact vertellen wát te wijzigen
 en wáárom dat de ranking, de AI-citatie of de lezer helpt.
-
-Je levert pure JSON, geen uitleg eromheen, geen markdown codeblock.
 
 ## REFERENTIE 1 — TOURING TONE OF VOICE
 ${TOURING_TOV}
@@ -114,33 +114,6 @@ ${ahrefs.relatedTerms.map((r) => `  - ${r.keyword} (volume ${r.volume ?? "?"})`)
 ${ahrefs.warnings?.length ? `\nWarnings: ${ahrefs.warnings.join("; ")}` : ""}`
     : `# Ahrefs-data
 Niet beschikbaar (geen API-token of call faalde). Werk met het gedetecteerde hoofdkeyword en je eigen expertise.`;
-
-  const schema = `{
-  "summary": "2-4 zinnen samenvatting van de huidige staat van het artikel en de grootste update-kansen.",
-  "seo": {
-    "primaryKeyword": "${detection.primaryKeyword}",
-    "secondaryKeywords": ${JSON.stringify(detection.secondaryKeywords)},
-    "intent": "${detection.intent}"
-  },
-  "articleMeta": {
-    "detectedTitle": "string of null",
-    "wordCount": ${article.wordCount},
-    "headingCount": { "h1": number, "h2": number, "h3": number },
-    "hasDateStamp": ${article.hasDateStamp},
-    "imageCount": ${article.images.length}
-  },
-  "recommendations": [
-    {
-      "id": "slug-korte-id",
-      "category": "intent_serp | title_meta | structure_headings | first_paragraph | content_freshness | geo_optimization | internal_linking | images | schema_markup | eeat_signals | technical_hygiene",
-      "title": "Korte actie-titel (max 80 tekens).",
-      "description": "2-5 zinnen uitleg: wat is het probleem en waarom telt het.",
-      "suggestion": "Optioneel: concrete voor/na-voorbeeld of tekstfragment.",
-      "impact": "high | medium | low",
-      "location": "Optioneel: waar in het artikel (bv. 'titel', 'H2 over kosten', 'alinea 3', 'alt-tekst van afbeelding 2')."
-    }
-  ]
-}`;
 
   const user = `# BESTAAND ARTIKEL
 
@@ -175,8 +148,7 @@ ${article.markdown}
 
 # OPDRACHT
 
-Geef een analyse voor een content-update van dit artikel. Lever JSON exact volgens dit schema:
-${schema}
+Geef een analyse voor een content-update van dit artikel. Roep de tool \`submit_analysis\` aan met je bevindingen.
 
 ## Regels voor je aanbevelingen
 1. Minimum 12 aanbevelingen, maximum 25. Geen opvulling, elke aanbeveling moet de copywriter echt vooruit helpen.
@@ -190,5 +162,13 @@ ${schema}
 9. Impact: "high" voor aanbevelingen die waarschijnlijk een zichtbare ranking- of CTR-verbetering opleveren; "medium" voor duidelijke verbeteringen; "low" voor fijn-slijpen.
 10. Titels zijn actiegericht ("Herformuleer H2 over kosten tot een PAA-vraag") — geen beschrijvingen ("H2 over kosten").`;
 
-  return callClaudeJson<AnalysisResult>({ system, user, maxTokens: 8000 });
+  return callClaudeTool<AnalysisResult>({
+    system,
+    user,
+    toolName: "submit_analysis",
+    toolDescription:
+      "Lever de volledige SEO-/GEO-analyse van het artikel met 12-25 concrete, aanvinkbare aanbevelingen.",
+    inputSchema: ANALYSIS_SCHEMA as unknown as Record<string, unknown>,
+    maxTokens: 16000,
+  });
 }

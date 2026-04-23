@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callClaudeJson } from "@/lib/anthropic";
+import { callClaudeTool } from "@/lib/anthropic";
 import { TOURING_TOV } from "@/lib/knowledge/touring-tov";
 import { AI_SLOP_RULES } from "@/lib/knowledge/ai-slop-rules";
+import { EDIT_SCHEMA } from "@/lib/schemas";
 import type { EditResult } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -40,14 +41,7 @@ je obsessie voor AI-slop: je herkent elk patroon, elke holle opener, elk
 buzzword, elke lege opsomming. Je bent niet creatief — je snoeit, schrapt en
 polijst. De tekst moet onderscheidbaar zijn van AI-gegenereerde content.
 
-Je levert pure JSON volgens dit schema:
-{
-  "final": "DE VOLLEDIG GEREDIGEERDE MARKDOWN",
-  "slopFindings": [
-    { "pattern": "naam van het slop-patroon", "snippet": "geciteerde originele frase", "fix": "wat je ervan gemaakt hebt" }
-  ],
-  "editNotes": "2-5 zinnen over wat je globaal gedaan hebt (ritme, toon, structuur, kwaliteitscore)."
-}
+Roep de tool \`submit_edit\` aan met de finale tekst, je slop-findings en je edit-notes.
 
 ## REFERENTIE 1 — AI-SLOP REGELS
 ${AI_SLOP_RULES}
@@ -71,11 +65,15 @@ ${rewritten}
 6. Behoud de Markdown-structuur (title/meta frontmatter, H1/H2/H3, lijsten, links, image comments).
 7. Schat een eindscore voor AI-slop-vrijheid op 10 (10 = onaanraakbaar, 8 = goed, 6 = herwerken). Noem die score in editNotes.
 
-Lever JSON volgens het schema.`;
+Roep \`submit_edit\` aan.`;
 
-  return callClaudeJson<EditResult>({
+  return callClaudeTool<EditResult>({
     system,
     user,
-    maxTokens: 12000,
+    toolName: "submit_edit",
+    toolDescription:
+      "Lever de finale geredigeerde Markdown, een lijst van gevonden AI-slop-patronen en een korte redactienotitie.",
+    inputSchema: EDIT_SCHEMA as unknown as Record<string, unknown>,
+    maxTokens: 16000,
   });
 }

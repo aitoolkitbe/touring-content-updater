@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callClaudeJson } from "@/lib/anthropic";
+import { callClaudeTool } from "@/lib/anthropic";
 import { TOURING_TOV, TOURING_INTERNAL_LINKS } from "@/lib/knowledge/touring-tov";
 import { SEO_EXPERTISE } from "@/lib/knowledge/seo-expertise";
+import { REWRITE_SCHEMA } from "@/lib/schemas";
 import type { Recommendation, RewriteResult } from "@/lib/types";
 import type { ScrapedArticle } from "@/lib/jina";
 
@@ -73,13 +74,7 @@ aanbevelingen — niet meer, niet minder.
 7. Secundaire keywords om te verweven: ${secondaryKeywords.join(", ") || "(geen)"}.
 8. Interne links: 3-5, uit de meegegeven lijst, alleen als echt relevant.
 
-Lever pure JSON volgens dit schema:
-{
-  "rewritten": "VOLLEDIG HERSCHREVEN ARTIKEL IN MARKDOWN",
-  "changelog": [
-    { "recommendationId": "string", "where": "korte locatie", "what": "wat je concreet gewijzigd hebt" }
-  ]
-}
+Roep de tool \`submit_rewrite\` aan met het volledige herschreven artikel en een changelog.
 
 ## REFERENTIE 1 — TOURING TONE OF VOICE
 ${TOURING_TOV}
@@ -119,7 +114,7 @@ ${article.markdown}
 ---EINDE ARTIKEL---
 
 ## OUTPUT
-Lever JSON. De "rewritten" bevat de VOLLEDIG herschreven Markdown (title + meta +
+Roep \`submit_rewrite\` aan. De "rewritten" bevat de VOLLEDIG herschreven Markdown (title + meta +
 body). Begin "rewritten" met een metablok in dit formaat:
 
 \`\`\`
@@ -139,5 +134,13 @@ afbeeldingen op dezelfde plaats in het artikel staan (link intact).
 De "changelog" bevat per aangevinkte aanbeveling één item dat exact beschrijft wat
 je veranderd hebt en waar.`;
 
-  return callClaudeJson<RewriteResult>({ system, user, maxTokens: 12000 });
+  return callClaudeTool<RewriteResult>({
+    system,
+    user,
+    toolName: "submit_rewrite",
+    toolDescription:
+      "Lever het volledig herschreven artikel (Markdown) en een changelog per toegepaste aanbeveling.",
+    inputSchema: REWRITE_SCHEMA as unknown as Record<string, unknown>,
+    maxTokens: 16000,
+  });
 }

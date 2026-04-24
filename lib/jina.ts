@@ -39,8 +39,23 @@ const JINA_REMOVE_SELECTORS = [
   "footer",
   '[role="navigation"]',
   '[role="contentinfo"]',
-  // Cookie/consent banners (vendor-specifiek én generiek). Veilig: deze
-  // klassen bevatten per definitie geen artikelcontent.
+  // Cookie-/consent-banners — alle grote vendors dekken.
+  // Touring gebruikt CookieYes (zichtbaar aan de 'cky-' class-prefix).
+  ".cky-consent-container",
+  ".cky-modal",
+  ".cky-preference-center",
+  "#cookieyes",
+  '[class*="cky-"]',
+  // OneTrust
+  '[id^="onetrust"]',
+  ".onetrust-banner-sdk",
+  // Cookiebot
+  "#CybotCookiebotDialog",
+  '[id^="CybotCookiebot"]',
+  // Cookie Law Info (WP plugin)
+  "#cookie-law-info-bar",
+  "#cookie-law-info-again",
+  // Generieke namen
   ".cookie-banner",
   ".cookie-notice",
   ".cookie-consent",
@@ -50,14 +65,10 @@ const JINA_REMOVE_SELECTORS = [
   ".gdpr-banner",
   "#cookie-banner",
   "#cookieconsent",
-  "#CybotCookiebotDialog",
-  '[id^="onetrust"]',
-  '[id^="CybotCookiebot"]',
   '[class*="cookie-banner"]',
   '[class*="cookie-notice"]',
   '[class*="cookie-consent"]',
   '[class*="cookieconsent"]',
-  '[class*="cookiebot"]',
   '[class*="gdpr-"]',
 ].join(", ");
 
@@ -119,11 +130,17 @@ export function parsePastedMarkdown(markdown: string): ScrapedArticle {
 }
 
 function parseMarkdown(url: string, markdown: string): ScrapedArticle {
-  // Jina plakt een "Title: ..." en soms "URL Source: ..." / "Markdown Content:"
-  // bovenaan. We knippen die weg zodat het echte artikel overblijft.
+  // Stap 1: Jina's eigen "Title: / URL Source: / Markdown Content:"-header weg.
   let cleaned = stripJinaHeader(markdown);
-  // Extra vangnet: als Jina toch cookie-banner-tekst heeft meegepakt
-  // (via een class die niet in onze selector-lijst staat), strip die regels.
+  // Stap 2: structureel: knip alles vóór "skip-to-main-content" en alles
+  //         vanaf "## Verwante inhoud" / "## Related" / "## Meer lezen".
+  //         Dit pakt het overgrote deel van de boilerplate weg, ook als
+  //         de exacte cookie-vendor onbekend is.
+  cleaned = extractArticleBody(cleaned);
+  // Stap 3: structurele cookie-tabel detecteren en wegknippen
+  //         (blok van "* Cookie X / * Looptijd Y / * Beschrijving Z"-bullets).
+  cleaned = stripCookieBullets(cleaned);
+  // Stap 4: fallback-regex voor losse cookie-banner-zinnen die nog overblijven.
   cleaned = stripCookieBanner(cleaned);
   const lines = cleaned.split("\n");
 
@@ -217,6 +234,142 @@ function stripJinaHeader(markdown: string): string {
   // Sla eventuele lege regels na de header over
   while (i < lines.length && lines[i].trim() === "") i++;
   return lines.slice(i).join("\n");
+}
+
+/**
+ * Structurele article-body extractie.
+ *
+ * Empirisch onderzoek op touring.be: Jina plaatst de cookie-preferences
+ * modal + nav HELEMAAL BOVENAAN de markdown, vóór de echte article-body.
+ * Het artikel start na de "skip-to-main-content"-link (een accessibility-
+ * link die bijna elke site heeft) en eindigt bij een "Verwante inhoud" /
+ * "Related" / "Meer lezen" H2.
+ *
+ * We zoeken dus:
+ *   START = na de eerste link die naar #main-content / #content / #main springt
+ *   END   = vóór de eerste H1/H2/H3 die "verwante", "gerelateerd", "related"
+ *           of "meer lezen" bevat.
+ *
+ * Valt één van beide anchors niet te vinden, dan vallen we terug op
+ * conservatief gedrag (alles overhouden of tot einde).
+ */
+function extractArticleBody(markdown: string): string {
+  let start = 0;
+  let end = markdown.length;
+
+  // --- START anchor: skip-to-main-content link geeft ons een POSITIE in
+  // de markdown waarna de echte content begint. Maar de navigatie staat
+  // vaak NA die skip-link (de skip-link springt naar een HTML-anchor die
+  // in de markdown niet zichtbaar is). De robuustste oplossing: na de
+  // skip-link zoeken we de eerste H1 of H2 — dat is de article-titel.
+  const skipPatterns: RegExp[] = [
+    /\[[^\]]*(?:overslaan\s+en\s+naar\s+de\s+inhoud|skip\s+to\s+(?:main\s+)?content|naar\s+de\s+inhoud\s+gaan)[^\]]*\]\([^)]+\)/i,
+    /\[[^\]]+\]\([^)]*#(?:main-content|maincontent)[^)]*\)/i,
+  ];
+  let afterSkipIndex: number | null = null;
+  for (const p of skipPatterns) {
+    const m = markdown.match(p);
+    if (m && m.index !== undefined) {
+      afterSkipIndex = m.index + m[0].length;
+      break;
+    }
+  }
+
+  if (afterSkipIndex !== null) {
+    // Zoek de eerste H1 (met of zonder voorafgaande whitespace) na de skip-link.
+    // Als er geen H1 is, val terug op eerste H2.
+    const rest = markdown.slice(afterSkipIndex);
+    const h1 = rest.match(/^#\s+.+$/m);
+    const h2 = rest.match(/^##\s+.+$/m);
+    const firstHeading =
+      h1 && (!h2 || (h1.index ?? 0) <= (h2.index ?? Infinity)) ? h1 : h2;
+    if (firstHeading && firstHeading.index !== undefined) {
+      start = afterSkipIndex + firstHeading.index;
+    } else {
+      start = afterSkipIndex;
+    }
+  } else {
+    // Geen skip-link gevonden: val terug op eerste H1 in het document.
+    const h1 = markdown.match(/^#\s+.+$/m);
+    if (h1 && h1.index !== undefined) start = h1.index;
+  }
+
+  // --- END anchor: "Verwante inhoud" / "Related" / "Meer lezen" heading ---
+  const body = markdown.slice(start);
+  const endPatterns: RegExp[] = [
+    /^#{1,3}\s+verwante\s+(?:inhoud|artikel(?:s|en)?)\b/im,
+    /^#{1,3}\s+gerelateerde?\s+(?:inhoud|artikel(?:s|en)?)\b/im,
+    /^#{1,3}\s+meer\s+(?:lezen|artikels?)\b/im,
+    /^#{1,3}\s+related\s+(?:content|articles?|posts?)\b/im,
+    /^#{1,3}\s+you\s+may\s+(?:also|like)\b/im,
+    /^#{1,3}\s+lees\s+(?:ook|meer)\b/im,
+  ];
+  for (const p of endPatterns) {
+    const m = body.match(p);
+    if (m && m.index !== undefined) {
+      end = start + m.index;
+      break;
+    }
+  }
+
+  return markdown.slice(start, end).trim();
+}
+
+/**
+ * Detecteert en verwijdert blokken met cookie-declaraties, de structurele
+ * tabel die cookie-preferences-modals typisch hebben:
+ *
+ *   * Cookie <naam>
+ *   * Looptijd <tijd> (of: Duration)
+ *   * Beschrijving <tekst> (of: Description)
+ *
+ * Een blok wordt herkend als er minstens 2 opeenvolgende "Cookie X"-bullets
+ * zijn — dat gebeurt nooit in een gewoon artikel. We strippen dan tot het
+ * blok structureel eindigt.
+ */
+function stripCookieBullets(markdown: string): string {
+  const lines = markdown.split("\n");
+  const out: string[] = [];
+  const isCookieBullet = (line: string): boolean =>
+    /^\s*[*-]\s+Cookie\s+\S/i.test(line) ||
+    /^\s*[*-]\s+(?:Looptijd|Duration)\s+/i.test(line) ||
+    /^\s*[*-]\s+(?:Beschrijving|Description)\s+/i.test(line);
+  const isStartOfCookie = (line: string): boolean =>
+    /^\s*[*-]\s+Cookie\s+\S/i.test(line);
+
+  let i = 0;
+  while (i < lines.length) {
+    if (isStartOfCookie(lines[i])) {
+      // Kijk vooruit: staan er meerdere "Cookie X"-bullets binnen bereik?
+      let cookieCount = 0;
+      let j = i;
+      while (j < lines.length && j < i + 200) {
+        if (isStartOfCookie(lines[j])) cookieCount++;
+        // Stop bij een header of lange paragraaf — daar eindigt het blok sowieso.
+        if (/^#{1,6}\s+/.test(lines[j])) break;
+        j++;
+      }
+      if (cookieCount >= 2) {
+        // Skip het hele blok: alles tot de volgende niet-cookie / niet-lege regel
+        // die ook niet met een checkbox-marker of categorienaam start.
+        while (
+          i < lines.length &&
+          (isCookieBullet(lines[i]) ||
+            lines[i].trim() === "" ||
+            /^\s*-\s+\[[ xX]\]/.test(lines[i]) || // - [x] checkbox marker
+            /^\s*(?:Strict\s+noodzakelijk|Functionele\s+cookies|Prestatiecookies|Analytische\s+cookies|Cookies\s+voor\s+|Marketing\s+cookies|Advertising\s+cookies|Always\s+active)/i.test(
+              lines[i]
+            ))
+        ) {
+          i++;
+        }
+        continue;
+      }
+    }
+    out.push(lines[i]);
+    i++;
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 /**

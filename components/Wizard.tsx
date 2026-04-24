@@ -10,6 +10,8 @@ import type {
   RewriteResult,
 } from "@/lib/types";
 import { CATEGORY_LABELS } from "@/lib/types";
+import { TrackChanges } from "./TrackChanges";
+import { FinaleTekst } from "./FinaleTekst";
 
 type Step =
   | "input"
@@ -222,6 +224,7 @@ export function Wizard() {
 
       {step === "done" && rewrite && edited && analysis && (
         <DoneView
+          article={article!}
           rewrite={rewrite}
           edited={edited}
           analysis={analysis}
@@ -580,31 +583,17 @@ function ImpactBadge({ impact }: { impact: "high" | "medium" | "low" }) {
 /* --------------------------- Done --------------------------- */
 
 function DoneView(props: {
+  article: ScrapedArticle;
   rewrite: RewriteResult;
   edited: EditResult;
   analysis: AnalysisResult;
   onReset: () => void;
 }) {
-  const [tab, setTab] = useState<"final" | "changelog" | "slop" | "compare">(
-    "final"
-  );
-  const [copied, setCopied] = useState(false);
+  type DoneTab = "review" | "final" | "changelog" | "slop" | "compare";
+  const [tab, setTab] = useState<DoneTab>("review");
+  const [curated, setCurated] = useState<string>(props.edited.final);
 
-  async function copyFinal() {
-    await navigator.clipboard.writeText(props.edited.final);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-
-  function download() {
-    const blob = new Blob([props.edited.final], { type: "text/markdown" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `touring-update-${Date.now()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
+  const wasCurated = curated !== props.edited.final;
 
   return (
     <div className="space-y-6">
@@ -613,44 +602,35 @@ function DoneView(props: {
           <div>
             <h2 className="text-base font-semibold">Klaar.</h2>
             <p className="text-xs text-touring-muted">
-              Herschreven én eindgeredigeerd. Kopieer, download of bekijk de
-              wijzigingen.
+              Herschreven én eindgeredigeerd. Beoordeel de voorgestelde
+              wijzigingen, accepteer of verwerp per stuk, en kopieer/download
+              de gecureerde versie.
             </p>
           </div>
-          <div className="flex gap-2">
-            <button
-              onClick={copyFinal}
-              className="rounded bg-touring-blue px-3 py-1.5 text-sm font-medium text-white hover:opacity-90"
-            >
-              {copied ? "Gekopieerd" : "Kopieer Markdown"}
-            </button>
-            <button
-              onClick={download}
-              className="rounded border border-touring-border bg-white px-3 py-1.5 text-sm hover:bg-touring-surface"
-            >
-              Download .md
-            </button>
-            <button
-              onClick={props.onReset}
-              className="rounded border border-touring-border bg-white px-3 py-1.5 text-sm hover:bg-touring-surface"
-            >
-              Nieuw artikel
-            </button>
-          </div>
+          <button
+            onClick={props.onReset}
+            className="rounded border border-touring-border bg-white px-3 py-1.5 text-sm hover:bg-touring-surface"
+          >
+            Nieuw artikel
+          </button>
         </div>
 
-        <div className="mt-4 flex gap-2 border-b border-touring-border text-sm">
+        <div className="mt-4 flex flex-wrap gap-2 border-b border-touring-border text-sm">
           {(
             [
-              ["final", "Finale tekst"],
-              ["changelog", `Wijzigingen (${props.rewrite.changelog.length})`],
+              ["review", "Wijzigingen beoordelen"],
+              [
+                "final",
+                wasCurated ? "Finale tekst (gecureerd)" : "Finale tekst",
+              ],
+              ["changelog", `Changelog (${props.rewrite.changelog.length})`],
               ["slop", `AI-slop (${props.edited.slopFindings.length})`],
-              ["compare", "Vergelijk met origineel"],
+              ["compare", "Vergelijk eindredactie"],
             ] as const
           ).map(([key, label]) => (
             <button
               key={key}
-              onClick={() => setTab(key)}
+              onClick={() => setTab(key as DoneTab)}
               className={
                 "border-b-2 px-3 py-2 " +
                 (tab === key
@@ -664,18 +644,26 @@ function DoneView(props: {
         </div>
 
         <div className="mt-4">
+          {tab === "review" && (
+            <TrackChanges
+              original={props.article.markdown}
+              revised={props.edited.final}
+              onExport={(resulting) => {
+                setCurated(resulting);
+                setTab("final");
+              }}
+            />
+          )}
+
           {tab === "final" && (
-            <div>
-              <p className="mb-2 text-xs italic text-touring-muted">
-                {props.edited.editNotes}
-              </p>
-              <textarea
-                readOnly
-                value={props.edited.final}
-                rows={28}
-                className="w-full rounded border border-touring-border bg-touring-surface p-3 font-mono text-xs"
-              />
-            </div>
+            <FinaleTekst
+              markdown={curated}
+              notes={
+                wasCurated
+                  ? `Gecureerde versie (op basis van jouw accept/verwerp-keuzes). Eindredactie-notitie: ${props.edited.editNotes}`
+                  : props.edited.editNotes
+              }
+            />
           )}
 
           {tab === "changelog" && (

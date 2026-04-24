@@ -24,47 +24,24 @@ export interface ScrapedArticle {
 }
 
 /**
- * Selectors van elementen die Jina voor de extractie moet wegknippen.
- * Dit houdt de gescrapete markdown beperkt tot het eigenlijke artikel en
- * weert nav, footer, sidebars en related-lijsten uit.
+ * Minimale, conservatieve set van selectors om Jina te laten overslaan.
+ * We beperken ons tot semantische HTML5-landmarks die op zowat elke site
+ * boilerplate bevatten — niet het artikel. Class-name based selectors
+ * zijn te gevaarlijk (één site's ".content" is het artikel, een andere
+ * site's ".nav" omvat per ongeluk ook de article-header).
+ *
+ * De écht rommelige content — duplicate images, icon-svgs, thumbnails van
+ * gerelateerde content — vangen we na de scrape op (zie parseMarkdown).
  */
 const JINA_REMOVE_SELECTORS = [
-  "header",
   "nav",
   "footer",
-  "aside",
   '[role="navigation"]',
-  '[role="banner"]',
   '[role="contentinfo"]',
-  ".header",
-  ".site-header",
-  ".main-header",
-  ".footer",
-  ".site-footer",
-  ".main-footer",
-  ".nav",
-  ".navigation",
-  ".main-nav",
-  ".menu",
-  ".sidebar",
-  ".related",
-  ".related-articles",
-  ".related-content",
-  ".more-articles",
-  ".recommended",
-  ".social-share",
-  ".share",
-  ".breadcrumb",
-  ".cookie",
-  ".newsletter",
-  ".popup",
-  ".modal",
-  "[class*='related']",
-  "[class*='sidebar']",
-  "[class*='footer']",
-  "[class*='nav-']",
-  "[class*='newsletter']",
 ].join(", ");
+
+/** Maximaal aantal afbeeldingen dat we aan de analyse doorgeven. */
+const MAX_IMAGES = 15;
 
 /**
  * Patronen die in een image-URL sterk op boilerplate (icoon, logo, UI-sprite) wijzen.
@@ -140,13 +117,16 @@ function parseMarkdown(url: string, markdown: string): ScrapedArticle {
     rawImages.push({ alt: m[1] || null, src: m[2] });
   }
   // Filter boilerplate images op URL-patroon en dedupe identieke src.
+  // Cap daarna op MAX_IMAGES: artikelfoto's staan meestal bovenaan; related-thumbs onderaan.
   const seen = new Set<string>();
-  const images = rawImages.filter((img) => {
-    const src = img.src.split("?")[0]; // normaliseer
-    if (seen.has(src)) return false;
-    seen.add(src);
-    return !BOILERPLATE_IMG_PATTERNS.some((re) => re.test(img.src));
-  });
+  const images = rawImages
+    .filter((img) => {
+      const src = img.src.split("?")[0]; // normaliseer
+      if (seen.has(src)) return false;
+      seen.add(src);
+      return !BOILERPLATE_IMG_PATTERNS.some((re) => re.test(img.src));
+    })
+    .slice(0, MAX_IMAGES);
 
   // Headings: # / ## / ### aan regelbegin
   const headings: Array<{ level: 1 | 2 | 3; text: string }> = [];

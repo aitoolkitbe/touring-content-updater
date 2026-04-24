@@ -66,14 +66,20 @@ aanbevelingen — niet meer, niet minder.
 ## REGELS
 1. Blijf inhoudelijk DICHT bij het origineel. Geen nieuwe standpunten, geen nieuwe feiten
    die niet al in het artikel staan of die de aanbevelingen expliciet vragen.
-2. Voer ALLEEN de aangevinkte aanbevelingen door. Laat de rest ongemoeid.
-3. Volg de Touring tone of voice strikt — zie referentie hieronder.
-4. Lever het hele artikel als schone Markdown. Inclusief nieuwe title-voorstel,
+2. Behoud de STRUCTUUR van het origineel: zelfde paragraaf-volgorde, zelfde H2-volgorde
+   waar mogelijk. Voeg alleen secties toe als een aangevinkte aanbeveling dat vraagt
+   (bv. "voeg een FAQ toe"). Wijzig bestaande zinnen zo lokaal mogelijk: als er één
+   woord moet wijzigen, wijzig alleen dat woord. Dit maakt track-changes-review
+   daarna nuttig.
+3. Voer ALLEEN de aangevinkte aanbevelingen door. Laat de rest ongemoeid —
+   ook zinnen die jij persoonlijk anders zou schrijven.
+4. Volg de Touring tone of voice strikt — zie referentie hieronder.
+5. Lever het hele artikel als schone Markdown. Inclusief nieuwe title-voorstel,
    meta description, H1, body, nieuwe alt-teksten voor afbeeldingen waar relevant.
-5. Geen AI-slop. Geen buzzwords. Geen emoji's. Geen holle openers.
-6. Primair keyword: "${primaryKeyword}". Verwerk natuurlijk, 0,5-1,5% densiteit.
-7. Secundaire keywords om te verweven: ${secondaryKeywords.join(", ") || "(geen)"}.
-8. Interne links: 3-5, uit de meegegeven lijst, alleen als echt relevant.
+6. Geen AI-slop. Geen buzzwords. Geen emoji's. Geen holle openers.
+7. Primair keyword: "${primaryKeyword}". Verwerk natuurlijk, 0,5-1,5% densiteit.
+8. Secundaire keywords om te verweven: ${secondaryKeywords.join(", ") || "(geen)"}.
+9. Interne links: 3-5, uit de meegegeven lijst, alleen als echt relevant.
 
 Roep de tool \`submit_rewrite\` aan met het volledige herschreven artikel en een changelog.
 

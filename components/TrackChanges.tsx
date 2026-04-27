@@ -192,13 +192,12 @@ export function TrackChanges({
 
 function buildChunks(original: string, revised: string): Chunk[] {
   const parts = diffLines(original, revised);
-  const chunks: Chunk[] = [];
-  let changeId = 0;
+  const raw: Chunk[] = [];
   let i = 0;
   while (i < parts.length) {
     const p = parts[i];
     if (!p.added && !p.removed) {
-      chunks.push({ type: "unchanged", value: p.value });
+      raw.push({ type: "unchanged", value: p.value });
       i++;
       continue;
     }
@@ -209,9 +208,43 @@ function buildChunks(original: string, revised: string): Chunk[] {
       if (parts[i].added) added += parts[i].value;
       i++;
     }
-    chunks.push({ type: "change", id: changeId++, removed, added });
+    // id wordt na merging definitief toegekend
+    raw.push({ type: "change", id: -1, removed, added });
   }
-  return chunks;
+
+  // Merge nearby change regions: als twee change-blokken slechts door een
+  // korte onveranderde tekst (lege regel, korte transitie) zijn gescheiden,
+  // groepeer ze in één wijziging. Dat voorkomt dat een H2-rename en een
+  // direct opvolgende paragraaf-edit als twee aparte voorstellen verschijnen,
+  // wat semantisch verwarrend is.
+  const MERGE_THRESHOLD_CHARS = 80;
+  const merged: Chunk[] = [];
+  for (const chunk of raw) {
+    const last = merged[merged.length - 1];
+    const prev = merged[merged.length - 2];
+    if (
+      chunk.type === "change" &&
+      last &&
+      last.type === "unchanged" &&
+      prev &&
+      prev.type === "change" &&
+      last.value.trim().length < MERGE_THRESHOLD_CHARS
+    ) {
+      // Merge: prev + last + chunk → één change-blok dat de tussen-tekst
+      // aan beide zijden behoudt (zo blijft "Resulterende tekst" coherent).
+      prev.removed = prev.removed + last.value + chunk.removed;
+      prev.added = prev.added + last.value + chunk.added;
+      merged.pop(); // verwijder de korte unchanged
+      continue;
+    }
+    merged.push(chunk);
+  }
+
+  // Definitieve, oplopende ID's toekennen.
+  let changeId = 0;
+  return merged.map((c) =>
+    c.type === "change" ? { ...c, id: changeId++ } : c
+  );
 }
 
 function computeResulting(
